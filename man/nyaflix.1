@@ -1,0 +1,64 @@
+.TH NYAFLIX 1 "2025-02-07" "nyaflix 1.0" "User Commands"
+.SH NAME
+nyaflix \- stream anime from the terminal
+.SH SYNOPSIS
+.B nyaflix
+[\fITITLE...\fR] [\fIOPTIONS\fR]
+.SH DESCRIPTION
+nyaflix is a command-line utility that streams anime directly from your terminal. It searches for anime torrents on nyaa.si based on a given TITLE query and provides an interactive selection interface. Once you select a torrent, nyaflix either prints the magnet link or streams the content via peerflix using your chosen media player.
+.PP
+By default, nyaflix streams using \fBmpv\fR. To switch to VLC, use the \fB--vlc\fR option.
+.SH OPTIONS
+.TP
+\fB-m\fR, \fB--magnet-only\fR
+Display the magnet link(s) for the selected torrent(s) and exit without starting a stream.
+.TP
+\fB--vlc\fR
+Use VLC in place of mpv as the streaming player.
+.TP
+\fB--help\fR
+Show this help message and exit.
+.SH USAGE
+Supply any search query as one or more initial argument(s). If you prefer to see a full list of results, simply omit the query. The script treats all non-flag arguments as part of the search term.
+.PP
+For example, to search for “solo leveling” and stream using VLC:
+.nf
+   nyaflix solo leveling --vlc
+.fi
+.SH EXAMPLES
+.IP "1." 4
+Stream “One Piece” with the default player (mpv):
+.nf
+   nyaflix one piece
+.fi
+.IP "2." 4
+Perform a broad search (i.e. list all available content) using mpv:
+.nf
+   nyaflix
+.fi
+.SH DEPENDENCIES
+nyaflix requires the following external utilities:
+.TP
+curl
+.TP
+lynx
+.TP
+fzf
+.TP
+peerflix
+.TP
+parallel
+.TP
+mpv
+.SH FILES
+During operation, temporary files may be created under \fB/tmp/torrent-stream/\fR. These are cleaned up automatically when free space in \fB/tmp\fR falls below a set threshold.
+.SH AUTHOR
+Moshe Sherman \fE<mtshrmn@gmail.com>\fR
+.SH CREDITS
+The scraping functionality used in nyaflix is adapted from \fBnyaash\fR, available at \fBhttps://notabug.org/BezierQuadratic/nyaash\fR.
+.SH LICENSE
+nyaflix is free software; you can redistribute and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License or (at your option) any later version. See \fBhttps://www.gnu.org/licenses/\fR for details.
+.SH BUGS
+No known bugs. Please report any issues to the author.
+.SH SEE ALSO
+peerflix(1), mpv(1), vlc(1), fzf(1), nyaash(1)

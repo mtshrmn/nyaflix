@@ -1,0 +1,179 @@
+#!/bin/bash
+# nyaflix, CLI utility to stream anime from the terminal.
+# Copyright (C) 2025 Moshe Sherman <mtshrmn@gmail.com>
+# 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+set -o pipefail
+THRESHOLD_KB=$((2 * 1024 * 1024)) # 2GB
+
+__usage="nyaflix - stream anime from the terminal
+Usage: nyaflix [TITLE] [OPTIONS]
+
+\e[4mArguments:\e[0m
+  TITLE
+
+\e[4mOptions:\e[0m
+  -m, --magnet-only                 print magnet of selected file and exit
+  --vlc                             use vlc instead of mpv
+  --help                            show this message and exit."
+
+HAS_HELP_FLAG=$(printf "%s" "$@" | grep -c "\--help")
+if [[ $HAS_HELP_FLAG -gt 0 ]]; then
+  echo -e "$__usage"
+      exit
+fi
+
+TITLE=""
+MAGNET_ONLY=false
+VLC=false
+
+END_TITLE___=false
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -m|--magnet-only)
+      MAGNET_ONLY=true
+      END_TITLE___=true
+      shift
+      ;;
+  
+    --vlc)
+      VLC=true
+      END_TITLE___=true
+      shift
+      ;;
+  
+    --help)
+      echo -e "$__usage"
+      END_TITLE___=true
+      exit
+      ;;
+
+    -*)
+      echo -e "Unknown flag \"$1\"\nTry nyaflix --help for help."
+      exit 1
+      ;;
+
+    *)
+      if [ "$END_TITLE___" = true ]; then
+        echo -e "Flags must come after the title.\nFor usage, please refer to nyaflix --help."
+        exit 1
+      fi
+
+      TITLE="${TITLE:+$TITLE }$1"
+      shift
+      ;;
+  esac
+done
+
+set -e
+
+highlight() {
+  today=$(date +"%Y-%m-%d")
+  yesterday=$(date -d "-1 day" +"%Y-%m-%d")
+  date_str=$(printf "%s" "$1" | cut -d"|" -f 1)
+  if [[ "$date_str" == "$today"* ]] || [[ "$date_str" == "$yesterday"* ]]; then
+    printf "%s\n" "$1" | sed "s/$date_str/\x1B[31m&\x1B[0m/"
+  else
+    printf "%s\n" "$1"
+  fi
+}
+
+export -f highlight
+
+
+# taken from https://notabug.org/BezierQuadratic/nyaash
+scrape_nyaa() {
+  URL="$(
+    curl -G -L -s -w "\n%{url_effective}\n" \
+      --data-urlencode "q=$1"               \
+      --data-urlencode "c=1_2"              \
+      --data-urlencode "f=0"                \
+      --data-urlencode "p=1"                \
+      http://0.0.0.0 |
+    sed "s#http://0.0.0.0#https://nyaa.si#" 2>/dev/null | tail -1)"
+
+  HTML=$(
+    lynx -source "$URL"           |
+    grep -A 1000000000 '<tbody>'  |
+    grep -B 1000000000 '</tbody>' |
+    sed -e '/<\/tbody>/d' -e '/<tbody>/d')
+
+  TITLES=$(
+    printf "%s" "$HTML"                                                         |
+    sed '/class="comments"/{N;d}'                                               |
+    grep -A 1 '<td colspan="2">'                                                |
+    sed -e '/<td colspan="2">/d' -e '/^--/d' -e 's/<\/a>//g' -e 's/^.*<a.*>//'  |
+    sed -e 's/&nbsp;/ /g' \
+      -e 's/&amp;/\&/g'   \
+      -e 's/&lt;/</g'     \
+      -e 's/&gt;/>/g'     \
+      -e 's/&quot;/"/g'   \
+      -e "s/&#39;/'/g"    \
+      -e 's/&ldquo;/"/g'  \
+      -e 's/&rdquo;/"/g')
+
+  MAGNETS=$(
+    printf "%s" "$HTML"                                                   |
+    grep -E "<a href"                                                     |
+    grep -o 'magnet:?xt=urn:btih:[a-f0-9]*&amp;dn=.*&amp;tr=.*Fannounce'  |
+    sed "s/\&amp;/\&/g")
+
+  DATE=$(
+    printf "%s" "$HTML"                                                   |
+    grep -o -E '<td class="text-center" data-timestamp="[0-9]*">.*</td>'  |
+    grep -o -E '[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}( ?([APap][mM]))?')
+
+  MAGNETS_LEN=$(echo "$MAGNETS" | wc -l)
+  MAGNETS_LEN=$((MAGNETS_LEN > 75 ? 75 : MAGNETS_LEN))
+
+  i=1
+  while [ $MAGNETS_LEN -ge $i ]; do
+    printf "%s | %s\t%s\n"                       \
+      "$(printf "%s" "$DATE"    | sed -n "$i"p)" \
+      "$(printf "%s" "$TITLES"  | sed -n "$i"p)" \
+      "$(printf "%s" "$MAGNETS" | sed -n "$i"p)"
+	  i=$((i+1))
+  done
+}
+
+SELECTED_MAGNETS=$(
+  scrape_nyaa "$TITLE"                                  |
+  parallel -j+0 highlight "{}"                          |
+  fzf --delimiter="\t" --ansi --no-sort --with-nth 1 -m |
+  cut -f2)
+
+if [ -z "$SELECTED_MAGNETS" ]; then
+  exit 1
+fi
+
+if [ "$MAGNET_ONLY" = true ]; then
+  printf "%s" "$SELECTED_MAGNETS"
+  exit 0
+fi
+
+PEERFLIX_VARS="--mpv"
+if [ "$VLC" = true ]; then
+  PEERFLIX_VARS="--vlc"
+fi
+
+for MAGNET in $SELECTED_MAGNETS; do
+    peerflix "$MAGNET" "$PEERFLIX_VARS"
+
+    # check if /tmp/ is almost empty and clean it up.
+    FREE_SPACE_KB=$(df --output=avail /tmp | tail -n 1)
+    if [[ $FREE_SPACE_KB -lt $THRESHOLD_KB ]]; then
+      rm -rf /tmp/torrent-stream/
+    fi
+done
