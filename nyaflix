@@ -27,7 +27,9 @@ Usage: nyaflix [TITLE] [OPTIONS]
 \e[4mOptions:\e[0m
   -m, --magnet-only                 print magnet of selected file and exit
   --vlc                             use vlc instead of mpv
-  --help                            show this message and exit."
+  --help                            show this message and exit.
+
+Options passed after -- will be passed to peerflix. See more at nyaflix(1)"
 
 HAS_HELP_FLAG=$(printf "%s" "$@" | grep -c "\--help")
 if [[ $HAS_HELP_FLAG -gt 0 ]]; then
@@ -36,11 +38,18 @@ if [[ $HAS_HELP_FLAG -gt 0 ]]; then
 fi
 
 TITLE=""
+PEERFLIX_ARGS=""
 MAGNET_ONLY=false
 VLC=false
 
 END_TITLE___=false
+END_ARGS___=false
 while [[ $# -gt 0 ]]; do
+  if [ "$END_ARGS___" = true ]; then
+    PEERFLIX_ARGS="${PEERFLIX_ARGS:+$PEERFLIX_ARGS }$1"
+    shift
+    continue
+  fi
   case $1 in
     -m|--magnet-only)
       MAGNET_ONLY=true
@@ -60,6 +69,15 @@ while [[ $# -gt 0 ]]; do
       exit
       ;;
 
+    --)
+      if [ "$END_ARGS___" = false ]; then
+        END_ARGS___=true
+      else
+        PEERFLIX_ARGS="${PEERFLIX_ARGS:+$PEERFLIX_ARGS }$1"
+      fi
+
+      shift
+      ;;
     -*)
       echo -e "Unknown flag \"$1\"\nTry nyaflix --help for help."
       exit 1
@@ -169,7 +187,7 @@ if [ "$VLC" = true ]; then
 fi
 
 for MAGNET in $SELECTED_MAGNETS; do
-    peerflix "$MAGNET" "$PEERFLIX_VARS"
+    peerflix "$MAGNET" "$PEERFLIX_VARS" "$PEERFLIX_ARGS"
 
     # check if /tmp/ is almost empty and clean it up.
     FREE_SPACE_KB=$(df --output=avail /tmp | tail -n 1)

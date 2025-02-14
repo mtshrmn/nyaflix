@@ -18,6 +18,9 @@ Use VLC in place of mpv as the streaming player.
 .TP
 \fB--help\fR
 Show this help message and exit.
+.TP
+Options passed after \fB--\f will be passed to peerflix.
+Notice you can use \fB--\f twice and it will be passed to the player of your choice.
 .SH USAGE
 Supply any search query as one or more initial argument(s). If you prefer to see a full list of results, simply omit the query. The script treats all non-flag arguments as part of the search term.
 .PP
@@ -35,6 +38,11 @@ Stream “One Piece” with the default player (mpv):
 Perform a broad search (i.e. list all available content) using mpv:
 .nf
    nyaflix
+.fi
+.IP "3." 4
+run peerflix with quiet mode and pass fullscreen to vlc
+.nf
+   nyaflix --vlc -- --quiet -- --fullscreen
 .fi
 .SH DEPENDENCIES
 nyaflix requires the following external utilities:
