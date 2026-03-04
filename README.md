@@ -42,6 +42,7 @@ Arguments:
 Options:
   -m, --magnet-only                 print magnet of selected file and exit
   --vlc                             use vlc instead of mpv
+  --log PATH                        modify default log file path
   --help                            show this message and exit.
 
 Options passed after -- will be passed to peerflix. See more at nyaflix(1)

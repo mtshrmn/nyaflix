@@ -27,6 +27,7 @@ Usage: nyaflix [TITLE] [OPTIONS]
 \e[4mOptions:\e[0m
   -m, --magnet-only                 print magnet of selected file and exit
   --vlc                             use vlc instead of mpv
+  --log PATH                        modify default log file path
   --help                            show this message and exit.
 
 Options passed after -- will be passed to peerflix. See more at nyaflix(1)"
@@ -41,6 +42,8 @@ TITLE=""
 PEERFLIX_ARGS=""
 MAGNET_ONLY=false
 VLC=false
+LOG_FILE_PATH="${XDG_STATE_HOME:-$HOME/.local/state/nyaflix/nyaflix.log}"
+LOG_FILE_DIR=$(dirname -- "$LOG_FILE_PATH")
 
 END_TITLE___=false
 END_ARGS___=false
@@ -62,7 +65,28 @@ while [[ $# -gt 0 ]]; do
       END_TITLE___=true
       shift
       ;;
-  
+
+    --log)
+      END_TITLE___=true
+      shift
+
+      if [[ $# -le 0 ]]; then
+        echo -e "missing file path for --log\nTry nyaflix --help for help."
+        exit 1
+      fi
+
+      LOG_FILE_PATH=$1
+      LOG_FILE_DIR=$(dirname -- "LOG_FILE_PATH")
+      if ! {
+        [[ -f "$LOG_FILE_PATH" && -w "$LOG_FILE_PATH" ]] ||
+        [[ ! -e "$LOG_FILE_PATH" && -d "$LOG_FILE_DIR" && -w "$LOG_FILE_DIR" ]]
+      }; then
+        echo "\"$LOG_FILE_PATH\" is not a valid file path"
+        exit 1
+      fi
+      shift
+      ;;
+
     --help)
       echo -e "$__usage"
       END_TITLE___=true
@@ -166,11 +190,21 @@ scrape_nyaa() {
   done
 }
 
-SELECTED_MAGNETS=$(
+nyaflix_log() {
+  printf '[%s] %s\n'       \
+    "$(date '+%Y-%m-%d %H:%M:%S')"  \
+    "$1" >> "$LOG_FILE_PATH"
+}
+
+mkdir -p "$LOG_FILE_DIR"
+
+SELECTED=$(
   scrape_nyaa "$TITLE"                                  |
   parallel -j+0 highlight "{}"                          |
-  fzf --delimiter="\t" --ansi --no-sort --with-nth 1 -m |
-  cut -f2)
+  fzf --delimiter="\t" --ansi --no-sort --with-nth 1 -m)
+
+SELECTED_MAGNETS=$(printf "%s" "$SELECTED" | cut -f2)
+SELECTED_TITLES=$(printf '%s' "$SELECTED" | cut -f1 | sed 's/.*| //')
 
 if [ -z "$SELECTED_MAGNETS" ]; then
   exit 1
@@ -186,12 +220,16 @@ if [ "$VLC" = true ]; then
   PEERFLIX_VARS="--vlc"
 fi
 
-for MAGNET in $SELECTED_MAGNETS; do
-    peerflix "$MAGNET" "$PEERFLIX_VARS" "$PEERFLIX_ARGS"
+paste <(echo -e "$SELECTED_TITLES") <(echo -e "$SELECTED_MAGNETS") |
+while IFS=$'\t' read -r TITLE MAGNET; do
+    nyaflix_log "STARTED: \"$TITLE\""
+    peerflix "$MAGNET" "$PEERFLIX_VARS" "$PEERFLIX_ARGS" < /dev/tty
+    nyaflix_log "ENDED:   \"$TITLE\""
 
     # check if /tmp/ is almost empty and clean it up.
     FREE_SPACE_KB=$(df --output=avail /tmp | tail -n 1)
     if [[ $FREE_SPACE_KB -lt $THRESHOLD_KB ]]; then
+      nyaflix_log "DELETING CACHE"
       rm -rf /tmp/torrent-stream/
     fi
 done
