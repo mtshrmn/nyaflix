@@ -215,15 +215,37 @@ if [ "$MAGNET_ONLY" = true ]; then
   exit 0
 fi
 
-PEERFLIX_VARS="--mpv"
+PEERFLIX_PLAYER="--mpv"
 if [ "$VLC" = true ]; then
-  PEERFLIX_VARS="--vlc"
+  PEERFLIX_PLAYER="--vlc"
 fi
+
+# handle passing args to peerflix and the player
+# split args to peerflix and the player
+if [[ "$PEERFLIX_ARGS" == *" -- "* ]]; then
+  eval "PLAYER_ARGS=(${PEERFLIX_ARGS#*-- })"
+  PEERFLIX_ARGS="${PEERFLIX_ARGS%% -- *}"
+else
+  PLAYER_ARGS=()
+fi
+
+# if peerflix args has a player, dont force a predefined choice
+mapfile -t PLAYERS < <(peerflix --help 2>&1 | grep "autoplay in" | grep -oE '(--|-)[a-z]+' )
+for PLAYER in "${PLAYERS[@]}"; do
+  if [[ " $PEERFLIX_ARGS " == *" $PLAYER "* ]]; then
+    unset PEERFLIX_PLAYER
+    break
+  fi
+done
 
 paste <(echo -e "$SELECTED_TITLES") <(echo -e "$SELECTED_MAGNETS") |
 while IFS=$'\t' read -r TITLE MAGNET; do
     nyaflix_log "STARTED: \"$TITLE\""
-    peerflix "$MAGNET" "$PEERFLIX_VARS" "$PEERFLIX_ARGS" < /dev/tty
+    # inject the title for mpv
+    if [[ "${PLAYER_ARGS[*]}" != *"--title="* ]] && [[ "$PEERFLIX_PLAYER" == "--mpv" ]]; then
+      PLAYER_ARGS=("--title=\"$TITLE\"" "${PLAYER_ARGS[@]}")
+    fi
+    peerflix "$MAGNET" ${PEERFLIX_PLAYER+$PEERFLIX_PLAYER} $PEERFLIX_ARGS -- "${PLAYER_ARGS[@]}" < /dev/tty
     nyaflix_log "ENDED:   \"$TITLE\""
 
     # check if /tmp/ is almost empty and clean it up.
